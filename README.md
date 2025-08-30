@@ -6,6 +6,7 @@ Create a single, gig‑ready PDF from a set list by mapping each line to numbere
 - Map free‑text set lists (including medleys) to chart indices via GPT‑4.1
 - Merge numbered PDFs from `song-bank/` into one download
 - Auto‑generated title page (gig name + date)
+- Clickable Table of Contents page that jumps to each song
 - Manage song metadata via CSV upload (saves to `song_data.json`)
 
 ## Prerequisites
@@ -34,6 +35,11 @@ streamlit run app.py
 4. Paste your set list (one song or medley per line) and click “Generate PDF”.
 5. Download the merged PDF when ready.
 
+### Table of Contents behavior
+- The PDF includes a TOC page with clickable entries.
+- Clicking a TOC line navigates to the top of the corresponding song.
+- Links are compatible with most PDF viewers (created with page‑level `/Dest` using XYZ positioning). If your viewer ignores links, try Adobe Acrobat Reader or a modern browser.
+
 ### Example set list
 ```
 I Think We're Alone Now/Pretty Woman
@@ -55,6 +61,7 @@ Summer of '69
 - “No valid indices found”: Ensure your set list lines can be matched to entries in the song bank; try clearer spelling.
 - “NNN.pdf not found … Skipping”: Add the missing numbered chart into `song-bank/`.
 - PDF builds but looks wrong: Confirm filenames are exactly `NNN.pdf` and that each source PDF opens cleanly.
+- TOC links don’t work: Ensure you opened the newly generated PDF, and try a different viewer. If links go to the wrong spot, verify page sizes are consistent across charts.
 
 ## Configuration and models
 - LLM: OpenAI GPT‑4.1 (as specified in the project plan). Temperature 0.45, `max_tokens` 4000.
@@ -69,5 +76,6 @@ Summer of '69
 ## Notes on differences from the project plan
 - The current implementation uses PyPDF2 and ReportLab to build the title page and merge PDFs (no WeasyPrint).
 - A CSV can be uploaded for metadata, but the app persists it to `song_data.json` and expects charts in `song-bank/`.
+ - Adds a clickable TOC using PyPDF2 link annotations after pages are merged.
 
 
