@@ -1,0 +1,283 @@
+import os
+import re
+import json
+import csv
+from io import BytesIO, StringIO
+from datetime import datetime
+
+import streamlit as st
+from openai import OpenAI
+from PyPDF2 import PdfReader, PdfWriter
+from reportlab.lib.pagesizes import letter
+from reportlab.pdfgen import canvas
+
+# ---------------------------------------------------------------------------
+# Helper functions
+# ---------------------------------------------------------------------------
+
+def get_default_song_data():
+    """Return the default song bank data."""
+    return {
+        "001": {"title": "Ain't too Proud to Beg/My Girl", "type": "medley"},
+        "002": {"title": "Alive", "type": "single"},
+        "003": {"title": "Are you Gonna Be My Girl", "type": "single"},
+        "004": {"title": "Back in the USSR", "type": "single"},
+        "005": {"title": "Besame Mucho", "type": "single"},
+        "006": {"title": "Brown Eyed Girl/Rockin Robin", "type": "medley"},
+        "007": {"title": "Comfortably Numb", "type": "single"},
+        "008": {"title": "Faith", "type": "single"},
+        "009": {"title": "Fun, Fun, Fun", "type": "single"},
+        "010": {"title": "Fat Bottomed Girls", "type": "single"},
+        "011": {"title": "Gimme some Lovin", "type": "single"},
+        "012": {"title": "Gimme Three Steps", "type": "single"},
+        "013": {"title": "Hungry Like the Wolf", "type": "single"},
+        "014": {"title": "I Think We're Alone Now", "type": "single"},
+        "015": {"title": "I Want to Be Sedated", "type": "single"},
+        "016": {"title": "I'm a Believer", "type": "single"},
+        "017": {"title": "In the End", "type": "single"},
+        "018": {"title": "Keep Your Hands to Yourself", "type": "single"},
+        "019": {"title": "Kryptonite", "type": "single"},
+        "020": {"title": "Lean on Me", "type": "single"},
+        "021": {"title": "Let it Be", "type": "single"},
+        "022": {"title": "Mississippi Queen", "type": "single"},
+        "023": {"title": "Pink Houses", "type": "single"},
+        "024": {"title": "Play That Funky Music", "type": "single"},
+        "025": {"title": "Plush", "type": "single"},
+        "026": {"title": "Pour Some Sugar on Me", "type": "single"},
+        "027": {"title": "Pretty Woman", "type": "single"},
+        "028": {"title": "Runaround Sue", "type": "single"},
+        "029": {"title": "Santeria", "type": "single"},
+        "030": {"title": "Smooth Criminal", "type": "single"},
+        "031": {"title": "Summer of '69", "type": "single"},
+        "032": {"title": "The Middle", "type": "single"},
+        "033": {"title": "Three Little Birds", "type": "single"},
+        "034": {"title": "Wagon Wheel", "type": "single"},
+        "035": {"title": "What I Like About You", "type": "single"},
+        "036": {"title": "Yellow Ledbetter", "type": "single"},
+        "037": {"title": "It Don't Matter to Me", "type": "single"},
+        "038": {"title": "Ticket to Ride", "type": "single"},
+        "039": {"title": "For Lovin' Me", "type": "single"},
+        "040": {"title": "Besame Mucho", "type": "single"},
+        "041": {"title": "Always on My Mind", "type": "single"},
+        "042": {"title": "Two of Us", "type": "single"}
+    }
+
+def load_song_data():
+    """Load song data from file or return defaults."""
+    song_data_file = "song_data.json"
+    if os.path.exists(song_data_file):
+        try:
+            with open(song_data_file, "r") as f:
+                return json.load(f)
+        except:
+            pass
+    return get_default_song_data()
+
+def save_song_data(song_data):
+    """Save song data to file."""
+    with open("song_data.json", "w") as f:
+        json.dump(song_data, f, indent=2)
+
+def process_csv_upload(uploaded_file):
+    """Process uploaded CSV and return song data dictionary."""
+    stringio = StringIO(uploaded_file.getvalue().decode("utf-8"))
+    csv_reader = csv.DictReader(stringio)
+    
+    song_data = {}
+    for row in csv_reader:
+        index = row.get("index", "").strip()
+        title = row.get("title", "").strip()
+        song_type = row.get("type", "single").strip()
+        
+        if index and title:
+            song_data[index] = {"title": title, "type": song_type}
+    
+    return song_data
+
+def build_system_prompt(song_data):
+    """Build system prompt with current song data."""
+    song_bank_json = json.dumps({"song_bank": song_data}, indent=4)
+    
+    return (
+        "You are an AI set list assistant.\n"
+        "You will be given a set list of songs to review. For each song in the set list,"
+        " respond with a simple, comma-separated list of index numbers (e.g., 004, 008, 025, …)"
+        " that correspond to each song's entry in the song_bank JSON object provided below.\n\n"
+        "Instructions:\n\n"
+        "• The order of the returned index numbers should match the order in which the songs are provided in the set list.\n"
+        "• Some set list entries may be medleys (multiple songs combined, such as 'I Think We're Alone Now/Pretty Woman/MissQueen').\n"
+        "  – If the song_bank contains that exact medley as a single entry, return that single index.\n"
+        "  – Otherwise, return the indices of each individual song in order.\n"
+        "• Handle spelling or abbreviation differences intelligently.\n\n"
+        "Return **only** the ordered, comma-separated index numbers. Do **not** include explanation or extra text.\n\n"
+        f"{song_bank_json}"
+    )
+
+def extract_indices(response_text: str):
+    """Return a list of 3‑digit index strings (001‑999) from the model response."""
+    return re.findall(r"\b\d{3}\b", response_text)
+
+
+def create_title_page(gig_name: str, gig_date: datetime):
+    """Generate a one‑page PDF with the gig name & date and return it as BytesIO."""
+    buffer = BytesIO()
+    c = canvas.Canvas(buffer, pagesize=letter)
+    width, height = letter
+
+    # Centre‑aligned title
+    c.setFont("Helvetica-Bold", 28)
+    c.drawCentredString(width / 2, height / 2 + 40, gig_name)
+
+    # Centre‑aligned date underneath
+    c.setFont("Helvetica", 18)
+    c.drawCentredString(
+        width / 2,
+        height / 2,
+        gig_date.strftime("%B %d, %Y"),
+    )
+
+    c.showPage()
+    c.save()
+    buffer.seek(0)
+    return buffer
+
+
+def build_setlist_pdf(indices, gig_name: str, gig_date: datetime, song_bank_dir: str):
+    """Create the final merged PDF and return it as BytesIO."""
+    writer = PdfWriter()
+
+    # 1️⃣  Title page
+    title_buffer = create_title_page(gig_name, gig_date)
+    title_reader = PdfReader(title_buffer)
+    writer.add_page(title_reader.pages[0])
+
+    # 2️⃣  Append each song chart from song‑bank
+    for idx in indices:
+        song_path = os.path.join(song_bank_dir, f"{idx}.pdf")
+        if not os.path.exists(song_path):
+            st.warning(f"⚠️  {idx}.pdf not found in '{song_bank_dir}'. Skipping …")
+            continue
+
+        with open(song_path, "rb") as f:
+            reader = PdfReader(f)
+            for page in reader.pages:
+                writer.add_page(page)
+
+    # 3️⃣  Output to in‑memory buffer
+    output = BytesIO()
+    writer.write(output)
+    output.seek(0)
+    return output
+
+
+# ---------------------------------------------------------------------------
+# Streamlit UI
+# ---------------------------------------------------------------------------
+
+st.set_page_config(page_title="Set‑List PDF Builder", layout="centered")
+st.title("🎵 Set‑List PDF Builder")
+
+# Load current song data
+current_song_data = load_song_data()
+
+# Sidebar configuration inputs
+with st.sidebar:
+    st.header("🔑 Configuration")
+    api_key = st.text_input("OpenAI API Key", type="password")
+    gig_name = st.text_input("Gig Name", placeholder="e.g. The Midnight Showcase")
+    gig_date = st.date_input("Gig Date", format="MM/DD/YYYY")
+    song_bank_dir = "song-bank"  # relative path
+    st.markdown(
+        f"Song charts must reside in `./{song_bank_dir}/` named **001.pdf – 999.pdf**.")
+    
+    st.header("🎵 Song Data Management")
+    
+    # CSV upload for song data
+    uploaded_file = st.file_uploader(
+        "Upload CSV to update song data",
+        type=['csv'],
+        help="CSV should have columns: index, title, type"
+    )
+    
+    if uploaded_file is not None:
+        try:
+            new_song_data = process_csv_upload(uploaded_file)
+            if new_song_data:
+                st.success(f"Loaded {len(new_song_data)} songs from CSV")
+                if st.button("💾 Save Song Data"):
+                    save_song_data(new_song_data)
+                    current_song_data = new_song_data
+                    st.success("Song data saved successfully!")
+                    st.rerun()
+            else:
+                st.error("No valid song data found in CSV")
+        except Exception as e:
+            st.error(f"Error processing CSV: {str(e)}")
+    
+    # Display current song count
+    st.info(f"Current song bank: {len(current_song_data)} songs")
+    
+    # Reset to defaults option
+    if st.button("🔄 Reset to Default Songs"):
+        save_song_data(get_default_song_data())
+        st.success("Reset to default song data!")
+        st.rerun()
+
+st.subheader("Paste or Upload Your Set List")
+
+setlist_text = st.text_area(
+    "Enter the set list (one song or medley per line):",
+    height=200,
+)
+
+# Submit button
+if st.button("Generate PDF"):
+    # --- Validation ----------------------------------------------------------------
+    if not api_key:
+        st.error("Please enter your OpenAI API key in the sidebar.")
+        st.stop()
+
+    if not gig_name or not gig_date:
+        st.error("Please provide both the gig name and gig date in the sidebar.")
+        st.stop()
+
+    if not setlist_text.strip():
+        st.error("Please paste or upload your set list first.")
+        st.stop()
+
+    # --- Call OpenAI ----------------------------------------------------------------
+    st.info("Contacting OpenAI …")
+    client = OpenAI(api_key=api_key)
+
+    SYSTEM_PROMPT = build_system_prompt(current_song_data)
+
+    completion = client.chat.completions.create(
+        model="gpt-4.1",  # or whichever model is preferred
+        temperature=0.45,
+        max_tokens=4000,
+        messages=[
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": setlist_text},
+        ],
+    )
+
+    model_reply = completion.choices[0].message.content.strip()
+    st.write("**Model output:**", model_reply)
+
+    indices = extract_indices(model_reply)
+    if not indices:
+        st.error("No valid indices found in the model response.")
+        st.stop()
+
+    # --- Build & deliver PDF --------------------------------------------------------
+    st.info("Building merged PDF …")
+    pdf_bytes = build_setlist_pdf(indices, gig_name, gig_date, song_bank_dir)
+
+    filename = f"{gig_name.replace(' ', '_')}_{gig_date.isoformat()}.pdf"
+    st.success("Done! Click below to download your set list.")
+    st.download_button(
+        label="📥 Download Set List PDF",
+        data=pdf_bytes,
+        file_name=filename,
+        mime="application/pdf",
+    )
