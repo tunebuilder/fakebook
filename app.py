@@ -8,6 +8,7 @@ from datetime import datetime
 import streamlit as st
 from openai import OpenAI
 from PyPDF2 import PdfReader, PdfWriter
+from PyPDF2.generic import NameObject, DictionaryObject, NumberObject, FloatObject, ArrayObject
 from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
 
@@ -163,8 +164,9 @@ def create_table_of_contents(toc_entries):
         page_str = str(page_num)
         c.drawRightString(width - 72, y, page_str)
 
-        num_width = c.stringWidth(page_str, "Helvetica", 12)
-        c.linkAbsolute("", dest, (width - 72 - num_width, y - 2, width - 72, y + 10))
+        # Note: Do not create ReportLab links here. Destinations are added later
+        # when pages are merged with PyPDF2, so ReportLab cannot resolve them now.
+        # Leaving the TOC text-only avoids "undefined destination" errors.
 
         y -= line_height
 
@@ -216,6 +218,62 @@ def build_setlist_pdf(indices, gig_name: str, gig_date: datetime, song_bank_dir:
         writer.add_named_destination(dest_name, page_number=start_page)
         title = song_data.get(idx, {}).get("title", idx)
         writer.add_outline_item(title, page_number=start_page)
+
+    # Add clickable links on the TOC page
+    if toc_entries:
+        try:
+            toc_page_index = 1  # 0-based: 0=title, 1=TOC
+            toc_page = writer.pages[toc_page_index]
+            page_width = float(toc_page.mediabox.width)
+            page_height = float(toc_page.mediabox.height)
+
+            y = page_height - 110
+            line_height = 18
+
+            # Ensure the Annots array exists
+            if "/Annots" not in toc_page:
+                toc_page[NameObject("/Annots")] = ArrayObject()
+
+            for i, entry in enumerate(toc_entries):
+                target_page = entry["page"] - 1  # Convert to 0-based page index
+
+                # Clickable area spans from left margin to right margin on the line
+                x1 = 72.0
+                x2 = page_width - 72.0
+                y1 = y - 2.0
+                y2 = y + 10.0
+
+                # Create a link annotation with page destination
+                # Get the target page height to position at top
+                target_page_obj = writer.pages[target_page]
+                target_height = float(target_page_obj.mediabox.height)
+                
+                link = DictionaryObject()
+                link.update({
+                    NameObject("/Type"): NameObject("/Annot"),
+                    NameObject("/Subtype"): NameObject("/Link"),
+                    NameObject("/Rect"): ArrayObject([
+                        FloatObject(x1), FloatObject(y1), FloatObject(x2), FloatObject(y2)
+                    ]),
+                    NameObject("/Border"): ArrayObject([NumberObject(0), NumberObject(0), NumberObject(0)]),
+                    NameObject("/Dest"): ArrayObject([
+                        writer.pages[target_page].indirect_reference,
+                        NameObject("/XYZ"),
+                        NumberObject(0),  # X position (0 = left edge)
+                        NumberObject(target_height),  # Y position (page height = top)
+                        NumberObject(0)   # Zoom (0 = keep current zoom)
+                    ])
+                })
+
+                # Add the link as an indirect object
+                writer._add_object(link)
+                toc_page["/Annots"].append(link.indirect_reference)
+                
+                y -= line_height
+        except Exception as e:
+            # If link annotation fails for any reason, continue with a text-only TOC
+            st.warning(f"Could not add TOC links: {str(e)}")
+            pass
 
     # Output to in‑memory buffer
     output = BytesIO()
