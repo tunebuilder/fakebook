@@ -142,28 +142,82 @@ def create_title_page(gig_name: str, gig_date: datetime):
     return buffer
 
 
-def build_setlist_pdf(indices, gig_name: str, gig_date: datetime, song_bank_dir: str):
-    """Create the final merged PDF and return it as BytesIO."""
+def create_table_of_contents(toc_entries):
+    """Generate a table‑of‑contents page and return it as BytesIO."""
+    buffer = BytesIO()
+    c = canvas.Canvas(buffer, pagesize=letter)
+    width, height = letter
+
+    c.setFont("Helvetica-Bold", 24)
+    c.drawCentredString(width / 2, height - 72, "Table of Contents")
+
+    c.setFont("Helvetica", 12)
+    y = height - 110
+    line_height = 18
+    for entry in toc_entries:
+        title = entry["title"]
+        page_num = entry["page"]
+        dest = entry["dest"]
+
+        c.drawString(72, y, title)
+        page_str = str(page_num)
+        c.drawRightString(width - 72, y, page_str)
+
+        num_width = c.stringWidth(page_str, "Helvetica", 12)
+        c.linkAbsolute("", dest, (width - 72 - num_width, y - 2, width - 72, y + 10))
+
+        y -= line_height
+
+    c.showPage()
+    c.save()
+    buffer.seek(0)
+    return buffer
+
+
+def build_setlist_pdf(indices, gig_name: str, gig_date: datetime, song_bank_dir: str, song_data):
+    """Create the final merged PDF with title, TOC, and charts."""
     writer = PdfWriter()
 
-    # 1️⃣  Title page
-    title_buffer = create_title_page(gig_name, gig_date)
-    title_reader = PdfReader(title_buffer)
-    writer.add_page(title_reader.pages[0])
+    # Precompute TOC entries and load song PDFs
+    toc_entries = []
+    song_pdfs = []
+    current_page = 3  # title page (1) + TOC (2) -> songs start at page 3
 
-    # 2️⃣  Append each song chart from song‑bank
     for idx in indices:
         song_path = os.path.join(song_bank_dir, f"{idx}.pdf")
         if not os.path.exists(song_path):
             st.warning(f"⚠️  {idx}.pdf not found in '{song_bank_dir}'. Skipping …")
             continue
 
-        with open(song_path, "rb") as f:
-            reader = PdfReader(f)
-            for page in reader.pages:
-                writer.add_page(page)
+        reader = PdfReader(song_path)
+        song_pdfs.append((idx, reader))
 
-    # 3️⃣  Output to in‑memory buffer
+        title = song_data.get(idx, {}).get("title", idx)
+        toc_entries.append({"title": title, "page": current_page, "dest": f"song_{idx}"})
+        current_page += len(reader.pages)
+
+    # Title and TOC pages
+    title_buffer = create_title_page(gig_name, gig_date)
+    title_reader = PdfReader(title_buffer)
+
+    toc_buffer = create_table_of_contents(toc_entries)
+    toc_reader = PdfReader(toc_buffer)
+
+    writer.add_page(title_reader.pages[0])
+    writer.add_page(toc_reader.pages[0])
+
+    # Append songs and destinations
+    for idx, reader in song_pdfs:
+        start_page = len(writer.pages)
+        for page in reader.pages:
+            writer.add_page(page)
+
+        dest_name = f"song_{idx}"
+        writer.add_named_destination(dest_name, page_number=start_page)
+        title = song_data.get(idx, {}).get("title", idx)
+        writer.add_outline_item(title, page_number=start_page)
+
+    # Output to in‑memory buffer
     output = BytesIO()
     writer.write(output)
     output.seek(0)
@@ -271,7 +325,7 @@ if st.button("Generate PDF"):
 
     # --- Build & deliver PDF --------------------------------------------------------
     st.info("Building merged PDF …")
-    pdf_bytes = build_setlist_pdf(indices, gig_name, gig_date, song_bank_dir)
+    pdf_bytes = build_setlist_pdf(indices, gig_name, gig_date, song_bank_dir, current_song_data)
 
     filename = f"{gig_name.replace(' ', '_')}_{gig_date.isoformat()}.pdf"
     st.success("Done! Click below to download your set list.")
