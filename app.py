@@ -60,7 +60,20 @@ def get_default_song_data():
         "039": {"title": "For Lovin' Me", "type": "single"},
         "040": {"title": "Besame Mucho", "type": "single"},
         "041": {"title": "Always on My Mind", "type": "single"},
-        "042": {"title": "Two of Us", "type": "single"}
+        "042": {"title": "Two of Us", "type": "single"},
+        "043": {"title": "Don't Dream It's Over", "type": "single"},
+        "044": {"title": "Bad Moon Rising", "type": "single"},
+        "045": {"title": "Me and Julio Down By The School Yard", "type": "single"},
+        "046": {"title": "Better Together", "type": "single"},
+        "047": {"title": "Boys of Summer", "type": "single"},
+        "048": {"title": "Down Under", "type": "single"},
+        "049": {"title": "I Can See Clearly Now", "type": "single"},
+        "050": {"title": "The World I Know", "type": "single"},
+        "051": {"title": "Mrs. Robinson", "type": "single"},
+        "052": {"title": "Fast Car", "type": "single"},
+        "053": {"title": "Stick Season", "type": "single"},
+        "054": {"title": "Free Fallin'", "type": "single"},
+        "055": {"title": "What's Up", "type": "single"}
     }
 
 def load_song_data():
