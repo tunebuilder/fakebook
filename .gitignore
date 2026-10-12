@@ -4,4 +4,10 @@ Lib/
 Scripts/
 include/
 
+# Local credentials
+.env
+.env.*
+!.env.example
+__pycache__/
+
 

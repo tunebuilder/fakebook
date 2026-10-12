@@ -1,81 +1,108 @@
-## Fakebook Set‑List PDF Builder
+## Fakebook Set-List PDF Builder
 
-Create a single, gig‑ready PDF from a set list by mapping each line to numbered charts in `song-bank/` using GPT‑4.1, then merging the PDFs with a generated title page.
+Turn a set list into a gig-ready PDF using GPT-6.1 Sol, numbered charts in
+`song-bank/`, a title page, and a clickable table of contents.
 
-### Features
-- Map free‑text set lists (including medleys) to chart indices via GPT‑4.1
-- Merge numbered PDFs from `song-bank/` into one download
-- Auto‑generated title page (gig name + date)
-- Clickable Table of Contents page that jumps to each song
-- Manage song metadata via CSV upload (saves to `song_data.json`)
+### Setup
 
-## Prerequisites
-- Python 3.9+
-- PDF charts stored as `./song-bank/NNN.pdf` where `NNN` is 3 digits (001–999)
-- OpenAI API key (enter in the app sidebar when prompted)
+Install dependencies in your Python environment:
 
-## Install
-```bash
-pip install -r requirements.txt
+```powershell
+python -m pip install -r requirements.txt
 ```
 
-## Run
-```bash
+Save your OpenAI API key in the `.env` file **beside `app.py`**:
+
+```dotenv
+OPENAI_API_KEY=your-key-here
+```
+
+The key persists between sessions. `.env` is ignored by Git; `.env.example` is a
+blank template. The app rereads the file on each interaction, so click Generate PDF
+once you save a changed key. A system `OPENAI_API_KEY` is also supported when the
+local file has no key. The key is never entered or displayed in the sidebar.
+
+Place chart PDFs in `song-bank/`, named `001.pdf` through `999.pdf`, and run:
+
+```powershell
 streamlit run app.py
 ```
 
-## Usage
-1. Place charts in `./song-bank/` named like `001.pdf`, `002.pdf`, …
-2. Start the app and open the sidebar:
-   - Enter your OpenAI API key
-   - Provide the Gig Name and Gig Date
-3. Optional: Upload a CSV to update song metadata
-   - Expected columns: `index,title,type`
-   - Click “Save Song Data” to persist as `song_data.json`
-4. Paste your set list (one song or medley per line) and click “Generate PDF”.
-5. Download the merged PDF when ready.
+Configuration, metadata, and chart paths resolve relative to the app's folder,
+even when launched from another directory.
 
-### Table of Contents behavior
-- The PDF includes a TOC page with clickable entries.
-- Clicking a TOC line navigates to the top of the corresponding song.
-- Links are compatible with most PDF viewers (created with page‑level `/Dest` using XYZ positioning). If your viewer ignores links, try Adobe Acrobat Reader or a modern browser.
+### Usage
 
-### Example set list
-```
+1. Enter the gig name and date in the sidebar.
+2. Choose **low, medium, high, xhigh, or max** reasoning. Medium is the default.
+   Both agents use the same setting; higher levels may take longer.
+3. Optionally upload a CSV with `index,title,type` and click Save Song Data. Numeric
+   indices are padded to three digits. Metadata is saved in `song_data.json`.
+4. Paste the set list, one song or medley per line, and click Generate PDF.
+5. Read the Song selection review and download the PDF.
+
+```text
 I Think We're Alone Now/Pretty Woman
 Wagon Wheel
 Summer of '69
 ```
 
-## How matching works (high level)
-- The app builds a system prompt that includes your current song bank (from `song_data.json` or built‑in defaults).
-- It asks GPT‑4.1 to return only the ordered list of 3‑digit indices, matching each line (or each part of a medley) to entries in the song bank.
-- The app extracts those indices and merges the corresponding PDFs from `song-bank/`.
+### Selection and review
 
-## File and data notes
-- `song-bank/` must contain the numbered PDFs. Missing files are skipped with a warning in the UI.
-- Song metadata lives in `song_data.json` (auto‑created/updated via CSV upload or reset to defaults in the sidebar).
+The selection agent maps the set list to ordered chart indices. A separate review
+agent independently matches every nonempty input line against the full song bank,
+without seeing the first agent's choices. Both use `gpt-6.1-sol` through the OpenAI
+Responses API with the sidebar's `reasoning.effort` setting.
 
-## Troubleshooting
-- “Please enter your OpenAI API key”: Enter the key in the sidebar.
-- “No valid indices found”: Ensure your set list lines can be matched to entries in the song bank; try clearer spelling.
-- “NNN.pdf not found … Skipping”: Add the missing numbered chart into `song-bank/`.
-- PDF builds but looks wrong: Confirm filenames are exactly `NNN.pdf` and that each source PDF opens cleanly.
-- TOC links don’t work: Ensure you opened the newly generated PDF, and try a different viewer. If links go to the wrong spot, verify page sizes are consistent across charts.
+The app compares the lists, including order and repetitions. A concise GUI report identifies:
 
-## Configuration and models
-- LLM: OpenAI GPT‑4.1 (as specified in the project plan). Temperature 0.45, `max_tokens` 4000.
+- Requested songs missing from the song bank, including missing medley components.
+- Available songs omitted from the initial pull.
+- Unexpected selections and ordering disagreements.
+- Ambiguous titles or alternate arrangements needing review.
+- Unknown chart IDs and missing chart PDF files.
 
-## Project structure (key files)
-- `app.py`: Streamlit UI and core logic
-- `song-bank/`: Numbered chart PDFs (not tracked by git by default)
-- `song_data.json`: Persisted song metadata (generated at runtime)
-- `requirements.txt`: Python dependencies
-- `docs/`: Project plan and change log (ignored by git)
+Expand Review details for matches per line. Exact medleys take precedence over
+separate charts; otherwise components are matched in order. Headings are ignored.
+An all-missing set list still receives a review.
 
-## Notes on differences from the project plan
-- The current implementation uses PyPDF2 and ReportLab to build the title page and merge PDFs (no WeasyPrint).
-- A CSV can be uploaded for metadata, but the app persists it to `song_data.json` and expects charts in `song-bank/`.
- - Adds a clickable TOC using PyPDF2 link annotations after pages are merged.
+The review checks metadata and file availability, not the musical content of PDFs.
+It reports disagreements rather than silently changing the pull. When issues
+remain, the download is labeled as having review issues and contains only available,
+known charts from the initial selection. If verification fails, a warning accompanies
+the unverified download. If no charts are available, only the report is shown.
 
+Results and downloads remain across interactions. Changed inputs produce a note
+that the displayed result is previous until you generate again. Each generation uses
+two API requests, adding latency and usage compared with one pass.
 
+### Troubleshooting
+
+- Missing key: fill in `OPENAI_API_KEY` in `.env` beside `app.py`.
+- Rejected key: check the saved key and your API account.
+- Rejected request: confirm your API project has access to `gpt-6.1-sol` and the
+  selected reasoning effort. The app does not fall back to a different model.
+- Missing song: add its metadata via CSV and its numbered PDF to `song-bank/`.
+- Missing PDF: add the corresponding `NNN.pdf` to `song-bank/`.
+- Review disagreement: check spelling, arrangement, and metadata, then regenerate.
+- PDF build failed: ensure every selected PDF opens and is not encrypted.
+- TOC links: open the new PDF in a viewer supporting link annotations.
+
+### Project files
+
+- `app.py`: Streamlit interface and PDF assembly.
+- `song_agents.py`: selection, independent review, and comparison logic.
+- `config.py`: project paths, model/reasoning settings, and credential loading.
+- `.env`: private API key; `.env.example`: blank configuration template.
+- `song-bank/`: numbered chart PDFs.
+- `song_data.json`: saved metadata; built-in defaults apply until saved.
+- `requirements.txt`: dependencies.
+
+Run the offline automated checks:
+
+```powershell
+python -m unittest discover -s tests -v
+```
+
+Model and reasoning options follow the
+[OpenAI GPT-6.1 Sol documentation](https://developers.openai.com/api/docs/models/gpt-6.1-sol).
