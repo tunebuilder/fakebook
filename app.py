@@ -7,6 +7,9 @@ from datetime import datetime
 
 import streamlit as st
 from openai import OpenAI
+from openai import APIError, AuthenticationError, BadRequestError, RateLimitError
+from config import PROJECT_DIR, MODEL, REASONING_LEVELS, DEFAULT_REASONING, get_api_key
+from song_agents import select_songs, review_selection, check_chart_files
 from PyPDF2 import PdfReader, PdfWriter
 from PyPDF2.generic import NameObject, DictionaryObject, NumberObject, FloatObject, ArrayObject
 from reportlab.lib.pagesizes import letter
@@ -58,14 +61,12 @@ def get_default_song_data():
         "037": {"title": "It Don't Matter to Me", "type": "single"},
         "038": {"title": "Ticket to Ride", "type": "single"},
         "039": {"title": "For Lovin' Me", "type": "single"},
-        "040": {"title": "Besame Mucho", "type": "single"},
         "041": {"title": "Always on My Mind", "type": "single"},
         "042": {"title": "Two of Us", "type": "single"},
         "043": {"title": "Don't Dream It's Over", "type": "single"},
         "044": {"title": "Bad Moon Rising", "type": "single"},
         "045": {"title": "Me and Julio Down By The School Yard", "type": "single"},
         "046": {"title": "Better Together", "type": "single"},
-        "047": {"title": "Boys of Summer", "type": "single"},
         "048": {"title": "Down Under", "type": "single"},
         "049": {"title": "I Can See Clearly Now", "type": "single"},
         "050": {"title": "The World I Know", "type": "single"},
@@ -73,15 +74,85 @@ def get_default_song_data():
         "052": {"title": "Fast Car", "type": "single"},
         "053": {"title": "Stick Season", "type": "single"},
         "054": {"title": "Free Fallin'", "type": "single"},
-        "055": {"title": "What's Up", "type": "single"}
+        "055": {"title": "What's Up", "type": "single"},
+        "057": {"title": "You May Be Right", "type": "single"},
+        "058": {"title": "Fight For Your Right To Party", "type": "single"},
+        "059": {"title": "Saturday Night's Alright for Fighting", "type": "single"},
+        "060": {"title": "Every Rose Has Its Thorn ", "type": "single"},
+        "061": {"title": "The Lion Sleeps Tonight", "type": "single"},
+        "062": {"title": "Shipping up to Boston", "type": "single"},
+        "063": {"title": "Magic Carpet Ride", "type": "single"},
+        "064": {"title": "Fortunate Son", "type": "single"},
+        "065": {"title": "Melt with You", "type": "single"},
+        "066": {"title": "Bad Decisions", "type": "single"},
+        "067": {"title": "Last Nite", "type": "single"},
+        "068": {"title": "Birthday", "type": "single"},
+        "069": {"title": "One Week", "type": "single"},
+        "070": {"title": "With or Without You", "type": "single"},
+        "071": {"title": "Just Like Heaven", "type": "single"},
+        "072": {"title": "Take it Easy", "type": "single"},
+        "073": {"title": "Save a Horse Ride a Cowboy", "type": "single"},
+        "074": {"title": "All Right Now", "type": "single"},
+        "075": {"title": "I Saw Her Standing There", "type": "single"},
+        "076": {"title": "Mr Jones", "type": "single"},
+        "077": {"title": "Help", "type": "single"},
+        "078": {"title": "Black", "type": "single"},
+        "079": {"title": "Riptide", "type": "single"},
+        "080": {"title": "Honky Tonk Women", "type": "single"},
+        "081": {"title": "ROCK in the USA", "type": "single"},
+        "082": {"title": "Ho Hey", "type": "single"},
+        "083": {"title": "Boys of Summer", "type": "single"},
+        "084": {"title": "Hard to Handle", "type": "single"},
+        "085": {"title": "Born to Be Wild", "type": "single"},
+        "086": {"title": "If We Stick Together", "type": "single"},
+        "087": {"title": "Into the Mystic", "type": "single"},
+        "088": {"title": "Sitting, Waiting, Wishing", "type": "single"},
+        "089": {"title": "The Thrill is Gone", "type": "single"},
+        "090": {"title": "Back on the Chain Gang", "type": "single"},
+        "091": {"title": "For What It's Worth", "type": "single"},
+        "092": {"title": "And It Stoned Me", "type": "single"},
+        "093": {"title": "Wild Night", "type": "single"},
+        "094": {"title": "Brandy (Your a fine Girl)", "type": "single"},
+        "095": {"title": "American Girl", "type": "single"},
+        "096": {"title": "Let Her Cry", "type": "single"},
+        "098": {"title": "Can't Find My Way Home", "type": "single"},
+        "099": {"title": "Stop Draggin My Heart Around", "type": "single"},
+        "100": {"title": "You Wreck Me", "type": "single"},
+        "101": {"title": "Mary Jane's Last Dance", "type": "single"},
+        "102": {"title": "You Don’t Know How It Feels", "type": "single"},
+        "103": {"title": "Bertha", "type": "single"},
+        "104": {"title": "Say You Love Me", "type": "single"},
+        "105": {"title": "Soulshine", "type": "single"},
+        "106": {"title": "Southern Cross", "type": "single"},
+        "107": {"title": "Stray Cat Strut", "type": "single"},
+        "108": {"title": "Brown Eyed Woman", "type": "single"},
+        "109": {"title": "Heart of Gold", "type": "single"},
+        "110": {"title": "Breakfast at Tiffany's", "type": "single"},
+        "111": {"title": "Superstition", "type": "single"},
+        "112": {"title": "Take Me To The River", "type": "single"},
+        "113": {"title": "Mustang Sally", "type": "single"},
+        "114": {"title": "Closing Time", "type": "single"},
+        "115": {"title": "Billie Jean", "type": "single"},
+        "116": {"title": "It's Hard", "type": "single"},
+        "117": {"title": "Reset Button", "type": "single"},
+        "118": {"title": "Smile", "type": "single"},
+        "119": {"title": "Piece of Your Mind", "type": "single"},
+        "120": {"title": "The Sycamore Tree", "type": "single"},
+        "121": {"title": "Country Roads", "type": "single"},
+        "122": {"title": "Last Kiss", "type": "single"},
+        "123": {"title": "Imagine", "type": "single"},
+        "124": {"title": "Can't You See", "type": "single"},
+        "125": {"title": "Creep", "type": "single"},
+        "126": {"title": "Leaving on a Jet Plane", "type": "single"},
+        "127": {"title": "Boys of Summer (LOV)", "type": "single"}
     }
 
 def load_song_data():
     """Load song data from file or return defaults."""
-    song_data_file = "song_data.json"
+    song_data_file = PROJECT_DIR / "song_data.json"
     if os.path.exists(song_data_file):
         try:
-            with open(song_data_file, "r") as f:
+            with open(song_data_file, "r", encoding="utf-8") as f:
                 return json.load(f)
         except:
             pass
@@ -89,48 +160,24 @@ def load_song_data():
 
 def save_song_data(song_data):
     """Save song data to file."""
-    with open("song_data.json", "w") as f:
+    with open(PROJECT_DIR / "song_data.json", "w", encoding="utf-8") as f:
         json.dump(song_data, f, indent=2)
 
 def process_csv_upload(uploaded_file):
     """Process uploaded CSV and return song data dictionary."""
     stringio = StringIO(uploaded_file.getvalue().decode("utf-8"))
     csv_reader = csv.DictReader(stringio)
-    
+
     song_data = {}
     for row in csv_reader:
-        index = row.get("index", "").strip()
+        index = row.get("index", "").strip().zfill(3)
         title = row.get("title", "").strip()
         song_type = row.get("type", "single").strip()
-        
-        if index and title:
+
+        if re.fullmatch(r"[0-9]{3}", index) and index != "000" and title:
             song_data[index] = {"title": title, "type": song_type}
-    
+
     return song_data
-
-def build_system_prompt(song_data):
-    """Build system prompt with current song data."""
-    song_bank_json = json.dumps({"song_bank": song_data}, indent=4)
-    
-    return (
-        "You are an AI set list assistant.\n"
-        "You will be given a set list of songs to review. For each song in the set list,"
-        " respond with a simple, comma-separated list of index numbers (e.g., 004, 008, 025, …)"
-        " that correspond to each song's entry in the song_bank JSON object provided below.\n\n"
-        "Instructions:\n\n"
-        "• The order of the returned index numbers should match the order in which the songs are provided in the set list.\n"
-        "• Some set list entries may be medleys (multiple songs combined, such as 'I Think We're Alone Now/Pretty Woman/MissQueen').\n"
-        "  – If the song_bank contains that exact medley as a single entry, return that single index.\n"
-        "  – Otherwise, return the indices of each individual song in order.\n"
-        "• Handle spelling or abbreviation differences intelligently.\n\n"
-        "Return **only** the ordered, comma-separated index numbers. Do **not** include explanation or extra text.\n\n"
-        f"{song_bank_json}"
-    )
-
-def extract_indices(response_text: str):
-    """Return a list of 3‑digit index strings (001‑999) from the model response."""
-    return re.findall(r"\b\d{3}\b", response_text)
-
 
 def create_title_page(gig_name: str, gig_date: datetime):
     """Generate a one‑page PDF with the gig name & date and return it as BytesIO."""
@@ -157,47 +204,104 @@ def create_title_page(gig_name: str, gig_date: datetime):
 
 
 def create_table_of_contents(toc_entries):
-    """Generate a table‑of‑contents page and return it as BytesIO."""
+    """
+    Generate a table‑of‑contents page (multipage if needed) and return (BytesIO, entry_positions).
+    entry_positions is a list of dicts: {'page_index': int, 'y': float} relative to the TOC PDF.
+    """
     buffer = BytesIO()
     c = canvas.Canvas(buffer, pagesize=letter)
     width, height = letter
 
+    # Layout constants
+    PAGE_1_START_Y = height - 110
+    SUBSEQUENT_START_Y = height - 72
+    BOTTOM_MARGIN = 50
+    LINE_HEIGHT = 18
+
+    entry_positions = []
+
+    # --- First Page Setup ---
     c.setFont("Helvetica-Bold", 24)
     c.drawCentredString(width / 2, height - 72, "Table of Contents")
 
     c.setFont("Helvetica", 12)
-    y = height - 110
-    line_height = 18
+    y = PAGE_1_START_Y
+    page_index = 0
+
     for entry in toc_entries:
+        # Check if we need a new page
+        if y < BOTTOM_MARGIN:
+            c.showPage()
+            page_index += 1
+            y = SUBSEQUENT_START_Y
+            c.setFont("Helvetica", 12)  # Reset font for new page
+
         title = entry["title"]
         page_num = entry["page"]
-        dest = entry["dest"]
 
+        # Draw the entry
         c.drawString(72, y, title)
         page_str = str(page_num)
         c.drawRightString(width - 72, y, page_str)
 
-        # Note: Do not create ReportLab links here. Destinations are added later
-        # when pages are merged with PyPDF2, so ReportLab cannot resolve them now.
-        # Leaving the TOC text-only avoids "undefined destination" errors.
+        # Record position for linking later
+        entry_positions.append({"page_index": page_index, "y": y})
 
-        y -= line_height
+        y -= LINE_HEIGHT
 
     c.showPage()
     c.save()
     buffer.seek(0)
-    return buffer
+    return buffer, entry_positions
+
+def calculate_toc_pages(num_entries):
+    """
+    Calculate how many pages the TOC will take based on the layout logic
+    in create_table_of_contents.
+    """
+    width, height = letter
+    PAGE_1_START_Y = height - 110
+    SUBSEQUENT_START_Y = height - 72
+    BOTTOM_MARGIN = 50
+    LINE_HEIGHT = 18
+
+    if num_entries == 0:
+        return 1
+
+    pages = 1
+    y = PAGE_1_START_Y
+
+    # Simulate the loop
+    for _ in range(num_entries):
+        if y < BOTTOM_MARGIN:
+            pages += 1
+            y = SUBSEQUENT_START_Y
+        y -= LINE_HEIGHT
+
+    return pages
 
 
 def build_setlist_pdf(indices, gig_name: str, gig_date: datetime, song_bank_dir: str, song_data):
     """Create the final merged PDF with title, TOC, and charts."""
     writer = PdfWriter()
 
-    # Precompute TOC entries and load song PDFs
+    # 1. Calculate Song Page Numbers
+    # We need to look ahead to see how many pages the TOC will occupy
+    # so we can number the songs correctly.
+
+    valid_indices = [idx for idx in indices if os.path.exists(os.path.join(song_bank_dir, f"{idx}.pdf"))]
+
+    # Calculate TOC pages
+    toc_page_count = calculate_toc_pages(len(valid_indices))
+
+    # Start page for songs: Title Pge (1) + TOC Pages + 1
+    start_song_page_num = 1 + toc_page_count + 1
+    current_page_num = start_song_page_num
+
     toc_entries = []
     song_pdfs = []
-    current_page = 3  # title page (1) + TOC (2) -> songs start at page 3
 
+    # 2. Prepare Song Data & TOC Entries
     for idx in indices:
         song_path = os.path.join(song_bank_dir, f"{idx}.pdf")
         if not os.path.exists(song_path):
@@ -208,59 +312,74 @@ def build_setlist_pdf(indices, gig_name: str, gig_date: datetime, song_bank_dir:
         song_pdfs.append((idx, reader))
 
         title = song_data.get(idx, {}).get("title", idx)
-        toc_entries.append({"title": title, "page": current_page, "dest": f"song_{idx}"})
-        current_page += len(reader.pages)
+        toc_entries.append({"title": title, "page": current_page_num, "dest": f"song_{idx}"})
+        current_page_num += len(reader.pages)
 
-    # Title and TOC pages
+    # 3. Generate Title & TOC PDFs
     title_buffer = create_title_page(gig_name, gig_date)
     title_reader = PdfReader(title_buffer)
 
-    toc_buffer = create_table_of_contents(toc_entries)
+    toc_buffer, toc_positions = create_table_of_contents(toc_entries)
     toc_reader = PdfReader(toc_buffer)
 
-    writer.add_page(title_reader.pages[0])
-    writer.add_page(toc_reader.pages[0])
+    # 4. Assemble the PDF
 
-    # Append songs and destinations
+    # Add Title Page
+    writer.add_page(title_reader.pages[0])
+
+    # Add TOC Pages
+    for page in toc_reader.pages:
+        writer.add_page(page)
+
+    # Add Songs
     for idx, reader in song_pdfs:
-        start_page = len(writer.pages)
+        start_page_index = len(writer.pages) # 0-based index in the final PDF
         for page in reader.pages:
             writer.add_page(page)
 
         dest_name = f"song_{idx}"
-        writer.add_named_destination(dest_name, page_number=start_page)
+        writer.add_named_destination(dest_name, page_number=start_page_index)
         title = song_data.get(idx, {}).get("title", idx)
-        writer.add_outline_item(title, page_number=start_page)
+        writer.add_outline_item(title, page_number=start_page_index)
 
-    # Add clickable links on the TOC page
-    if toc_entries:
-        try:
-            toc_page_index = 1  # 0-based: 0=title, 1=TOC
-            toc_page = writer.pages[toc_page_index]
-            page_width = float(toc_page.mediabox.width)
-            page_height = float(toc_page.mediabox.height)
+    # 5. Add Links to TOC
+    # We need to map each entry to the correct TOC page and Y coordinate.
+    # Title is page 0. TOC starts at page 1.
 
-            y = page_height - 110
-            line_height = 18
+    if toc_entries and toc_positions:
+        line_height = 18
 
-            # Ensure the Annots array exists
-            if "/Annots" not in toc_page:
-                toc_page[NameObject("/Annots")] = ArrayObject()
+        # Iterate over entries and their corresponding positions
+        for i, entry in enumerate(toc_entries):
+            pos = toc_positions[i]
 
-            for i, entry in enumerate(toc_entries):
-                target_page = entry["page"] - 1  # Convert to 0-based page index
+            # Which page of the PDF contains this TOC entry?
+            # 0 (Title) + 1 (Start of TOC) + pos['page_index']
+            target_toc_page_index = 1 + pos['page_index']
 
-                # Clickable area spans from left margin to right margin on the line
+            try:
+                toc_page = writer.pages[target_toc_page_index]
+                page_width = float(toc_page.mediabox.width)
+
+                y = pos['y']
+
+                # Clickable area
                 x1 = 72.0
                 x2 = page_width - 72.0
                 y1 = y - 2.0
                 y2 = y + 10.0
 
-                # Create a link annotation with page destination
-                # Get the target page height to position at top
-                target_page_obj = writer.pages[target_page]
+                # Calculate destination page index (0-based)
+                dest_page_num_display = entry["page"]
+                dest_page_index = dest_page_num_display - 1
+
+                # Setup Link Annotation
+                if "/Annots" not in toc_page:
+                    toc_page[NameObject("/Annots")] = ArrayObject()
+
+                target_page_obj = writer.pages[dest_page_index]
                 target_height = float(target_page_obj.mediabox.height)
-                
+
                 link = DictionaryObject()
                 link.update({
                     NameObject("/Type"): NameObject("/Annot"),
@@ -270,23 +389,21 @@ def build_setlist_pdf(indices, gig_name: str, gig_date: datetime, song_bank_dir:
                     ]),
                     NameObject("/Border"): ArrayObject([NumberObject(0), NumberObject(0), NumberObject(0)]),
                     NameObject("/Dest"): ArrayObject([
-                        writer.pages[target_page].indirect_reference,
+                        writer.pages[dest_page_index].indirect_reference,
                         NameObject("/XYZ"),
-                        NumberObject(0),  # X position (0 = left edge)
-                        NumberObject(target_height),  # Y position (page height = top)
-                        NumberObject(0)   # Zoom (0 = keep current zoom)
+                        NumberObject(0),
+                        NumberObject(target_height),
+                        NumberObject(0)
                     ])
                 })
 
-                # Add the link as an indirect object
                 writer._add_object(link)
                 toc_page["/Annots"].append(link.indirect_reference)
-                
-                y -= line_height
-        except Exception as e:
-            # If link annotation fails for any reason, continue with a text-only TOC
-            st.warning(f"Could not add TOC links: {str(e)}")
-            pass
+
+            except Exception as e:
+                # Fallback purely for robustness
+                print(f"Error adding link for {entry['title']}: {e}")
+                continue
 
     # Output to in‑memory buffer
     output = BytesIO()
@@ -299,110 +416,181 @@ def build_setlist_pdf(indices, gig_name: str, gig_date: datetime, song_bank_dir:
 # Streamlit UI
 # ---------------------------------------------------------------------------
 
-st.set_page_config(page_title="Set‑List PDF Builder", layout="centered")
-st.title("🎵 Set‑List PDF Builder")
+def render_result(result):
+    st.subheader("Song selection review")
+    review = result.get("review")
+    file_checks = result["file_checks"]
+    issues = bool(result.get("review_error") or file_checks["missing_files"]
+                  or file_checks["unknown_indices"] or result.get("pdf_error"))
+    if review:
+        issues = issues or not review["matches"] or bool(
+            review["missing_songs"] or review["uncertainties"]
+        )
+        if not issues and result.get("pdf"):
+            st.success(f"Verified {review['song_lines']} set-list entries. "
+                       f"All {len(result['indices'])} selected charts match and are available.")
+        else:
+            st.warning(f"Reviewed {review['song_lines']} set-list entries. See the issues below.")
+        for label, field in (("Missing from song bank", "missing_songs"),
+                             ("Available songs omitted from the pull", "omitted"),
+                             ("Unexpected selections", "unexpected"),
+                             ("Needs your review", "uncertainties")):
+            if review[field]:
+                st.markdown(f"**{label}**")
+                for item in review[field]:
+                    st.write("• " + item)
+        if review["order_issue"]:
+            st.warning("All chart counts match, but the selected order differs from the set list.")
+        with st.expander("Review details"):
+            st.table([{
+                "Line": entry["line_number"], "Requested": entry["requested"],
+                "Expected charts": ", ".join(entry["expected_indices"]) or "—",
+                "Notes": "; ".join(entry["missing_songs"] + entry["uncertainties"])
+                         or ("Heading" if entry["is_heading"] else "Matched"),
+            } for entry in review["entries"]])
+    if result.get("review_error"):
+        st.error("Verification unavailable: " + result["review_error"])
+    if file_checks["unknown_indices"]:
+        st.warning("Unknown chart indices excluded: " + ", ".join(file_checks["unknown_indices"]))
+    if file_checks["missing_files"]:
+        st.markdown("**Missing chart PDFs**")
+        for item in file_checks["missing_files"]:
+            st.write("• " + item)
+    st.caption("Selected charts: " + (", ".join(result["indices"]) or "None"))
+    if result.get("pdf_error"):
+        st.error(result["pdf_error"])
+    if result.get("pdf"):
+        if issues:
+            st.warning("The PDF contains the available charts from the initial pull. "
+                       "Review the issues above before using it.")
+        st.download_button(
+            label="📥 Download Set List PDF" if not issues else "📥 Download PDF with review issues",
+            data=result["pdf"], file_name=result["filename"], mime="application/pdf",
+        )
+    elif not result.get("pdf_error"):
+        st.info("No selected charts are available to build a PDF. Update the song bank or set list.")
+    st.caption("Verification checks song-bank metadata and chart file availability. "
+               "Ambiguous matches still need your review.")
 
-# Load current song data
-current_song_data = load_song_data()
 
-# Sidebar configuration inputs
-with st.sidebar:
-    st.header("🔑 Configuration")
-    api_key = st.text_input("OpenAI API Key", type="password")
-    gig_name = st.text_input("Gig Name", placeholder="e.g. The Midnight Showcase")
-    gig_date = st.date_input("Gig Date", format="MM/DD/YYYY")
-    song_bank_dir = "song-bank"  # relative path
-    st.markdown(
-        f"Song charts must reside in `./{song_bank_dir}/` named **001.pdf – 999.pdf**.")
-    
-    st.header("🎵 Song Data Management")
-    
-    # CSV upload for song data
-    uploaded_file = st.file_uploader(
-        "Upload CSV to update song data",
-        type=['csv'],
-        help="CSV should have columns: index, title, type"
-    )
-    
-    if uploaded_file is not None:
+def agent_error_message(error):
+    if isinstance(error, AuthenticationError):
+        return "OpenAI rejected the API key. Update OPENAI_API_KEY in the project's .env file."
+    if isinstance(error, RateLimitError):
+        return "OpenAI usage or rate limits were reached. Check your API account or try again later."
+    if isinstance(error, BadRequestError):
+        return (f"OpenAI could not accept the request. Check API access to {MODEL} "
+                "and the selected reasoning level, or shorten the set list.")
+    if isinstance(error, APIError):
+        return "OpenAI could not finish the request. Check your connection and try again."
+    if isinstance(error, ValueError):
+        return "The agent returned an incomplete or invalid result. Please try again."
+    return "The agent could not finish. Please try again."
+
+
+def main():
+    st.set_page_config(page_title="Set‑List PDF Builder", layout="centered")
+    st.title("🎵 Set‑List PDF Builder")
+    current_song_data = load_song_data()
+    api_key = get_api_key()
+    song_bank_dir = PROJECT_DIR / "song-bank"
+
+    with st.sidebar:
+        st.header("Configuration")
+        st.caption(f"Model: {MODEL}")
+        reasoning_effort = st.selectbox(
+            "Reasoning level", REASONING_LEVELS,
+            index=REASONING_LEVELS.index(DEFAULT_REASONING),
+            help="Applies to both the selection and review agents. Higher levels may take longer.",
+        )
+        st.caption("API key loaded from local configuration." if api_key else
+                   "Add OPENAI_API_KEY to .env beside app.py.")
+        gig_name = st.text_input("Gig Name", placeholder="e.g. The Midnight Showcase")
+        gig_date = st.date_input("Gig Date", format="MM/DD/YYYY")
+        st.markdown("Song charts must reside in `./song-bank/` named **001.pdf – 999.pdf**.")
+        st.header("🎵 Song Data Management")
+        uploaded_file = st.file_uploader(
+            "Upload CSV to update song data", type=['csv'],
+            help="CSV should have columns: index, title, type",
+        )
+        if uploaded_file is not None:
+            try:
+                new_song_data = process_csv_upload(uploaded_file)
+                if new_song_data:
+                    st.success(f"Loaded {len(new_song_data)} songs from CSV")
+                    if st.button("💾 Save Song Data"):
+                        save_song_data(new_song_data)
+                        st.success("Song data saved successfully!")
+                        st.rerun()
+                else:
+                    st.error("No valid song data found in CSV")
+            except Exception:
+                st.error("Could not read the CSV. Check its index, title, and type columns.")
+        st.info(f"Current song bank: {len(current_song_data)} songs")
+        if st.button("🔄 Reset to Default Songs"):
+            save_song_data(get_default_song_data())
+            st.success("Reset to default song data!")
+            st.rerun()
+
+    st.subheader("Paste Your Set List")
+    setlist_text = st.text_area("Enter the set list (one song or medley per line):", height=200)
+    input_snapshot = (setlist_text, gig_name, gig_date.isoformat(), reasoning_effort,
+                      json.dumps(current_song_data, sort_keys=True))
+    if st.button("Generate PDF"):
+        st.session_state.pop("setlist_result", None)
+        if not api_key:
+            st.error("Add your OpenAI API key to OPENAI_API_KEY in .env beside app.py, then try again.")
+            st.stop()
+        if not gig_name.strip() or not gig_date:
+            st.error("Please provide both the gig name and gig date in the sidebar.")
+            st.stop()
+        if not setlist_text.strip():
+            st.error("Please paste your set list first.")
+            st.stop()
         try:
-            new_song_data = process_csv_upload(uploaded_file)
-            if new_song_data:
-                st.success(f"Loaded {len(new_song_data)} songs from CSV")
-                if st.button("💾 Save Song Data"):
-                    save_song_data(new_song_data)
-                    current_song_data = new_song_data
-                    st.success("Song data saved successfully!")
-                    st.rerun()
-            else:
-                st.error("No valid song data found in CSV")
-        except Exception as e:
-            st.error(f"Error processing CSV: {str(e)}")
-    
-    # Display current song count
-    st.info(f"Current song bank: {len(current_song_data)} songs")
-    
-    # Reset to defaults option
-    if st.button("🔄 Reset to Default Songs"):
-        save_song_data(get_default_song_data())
-        st.success("Reset to default song data!")
-        st.rerun()
+            with OpenAI(api_key=api_key) as client:
+                with st.spinner("Selecting songs from the song bank …"):
+                    indices = select_songs(client, setlist_text, current_song_data, reasoning_effort)
+                result = {
+                    "indices": indices, "snapshot": input_snapshot,
+                    "file_checks": check_chart_files(indices, song_bank_dir, current_song_data),
+                    "filename": f"{gig_name.strip().replace(' ', '_')}_{gig_date.isoformat()}.pdf",
+                }
+                try:
+                    with st.spinner("Review agent: checking every song and medley …"):
+                        result["review"] = review_selection(
+                            client, setlist_text, indices, current_song_data, reasoning_effort,
+                        )
+                    # Also report missing PDFs for charts the first agent omitted.
+                    result["file_checks"] = check_chart_files(
+                        indices + result["review"]["expected_indices"], song_bank_dir, current_song_data,
+                    )
+                except (APIError, ValueError) as error:
+                    result["review_error"] = agent_error_message(error)
+        except (APIError, ValueError) as error:
+            st.error(agent_error_message(error))
+            st.stop()
 
-st.subheader("Paste or Upload Your Set List")
+        available_indices = [index for index in indices if index in current_song_data
+                             and (song_bank_dir / f"{index}.pdf").is_file()]
+        if available_indices:
+            try:
+                with st.spinner("Building merged PDF …"):
+                    result["pdf"] = build_setlist_pdf(
+                        available_indices, gig_name.strip(), gig_date,
+                        song_bank_dir, current_song_data,
+                    ).getvalue()
+            except Exception:
+                result["pdf_error"] = ("Could not build the PDF. Check that each selected chart "
+                                       "opens correctly and is not encrypted.")
+        st.session_state["setlist_result"] = result
 
-setlist_text = st.text_area(
-    "Enter the set list (one song or medley per line):",
-    height=200,
-)
+    result = st.session_state.get("setlist_result")
+    if result:
+        if result["snapshot"] != input_snapshot:
+            st.info("Showing the previous result. Click Generate PDF to apply your current changes.")
+        render_result(result)
 
-# Submit button
-if st.button("Generate PDF"):
-    # --- Validation ----------------------------------------------------------------
-    if not api_key:
-        st.error("Please enter your OpenAI API key in the sidebar.")
-        st.stop()
 
-    if not gig_name or not gig_date:
-        st.error("Please provide both the gig name and gig date in the sidebar.")
-        st.stop()
-
-    if not setlist_text.strip():
-        st.error("Please paste or upload your set list first.")
-        st.stop()
-
-    # --- Call OpenAI ----------------------------------------------------------------
-    st.info("Contacting OpenAI …")
-    client = OpenAI(api_key=api_key)
-
-    SYSTEM_PROMPT = build_system_prompt(current_song_data)
-
-    completion = client.chat.completions.create(
-        model="gpt-4.1",  # or whichever model is preferred
-        temperature=0.45,
-        max_tokens=4000,
-        messages=[
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": setlist_text},
-        ],
-    )
-
-    model_reply = completion.choices[0].message.content.strip()
-    st.write("**Model output:**", model_reply)
-
-    indices = extract_indices(model_reply)
-    if not indices:
-        st.error("No valid indices found in the model response.")
-        st.stop()
-
-    # --- Build & deliver PDF --------------------------------------------------------
-    st.info("Building merged PDF …")
-    pdf_bytes = build_setlist_pdf(indices, gig_name, gig_date, song_bank_dir, current_song_data)
-
-    filename = f"{gig_name.replace(' ', '_')}_{gig_date.isoformat()}.pdf"
-    st.success("Done! Click below to download your set list.")
-    st.download_button(
-        label="📥 Download Set List PDF",
-        data=pdf_bytes,
-        file_name=filename,
-        mime="application/pdf",
-    )
+if __name__ == "__main__":
+    main()
